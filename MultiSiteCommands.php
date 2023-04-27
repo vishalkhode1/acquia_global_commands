@@ -1,6 +1,6 @@
 <?php
 
-namespace Drush\Commands\drupal_recommended_multisite;
+namespace Drush\Commands\acquia_global_commands;
 
 use Consolidation\AnnotatedCommand\CommandData;
 use Drush\Commands\DrushCommands;
@@ -10,7 +10,7 @@ use Symfony\Component\Console\Question\Question;
 /**
  * A drush command file.
  *
- * @package Drupal\drupal_recommended_multisite\Commands
+ * @package Drupal\acquia_global_commands\Commands
  */
 class MultiSiteCommands extends DrushCommands {
 

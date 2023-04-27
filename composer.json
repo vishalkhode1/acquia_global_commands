@@ -1,7 +1,7 @@
 {
-  "name":  "acquia/drupal_recommended_multisite",
+  "name":  "acquia/acquia_global_commands",
   "type":  "drupal-drush",
-  "description":  "Acquia  drupal  recommended  multisite  settings.",
+  "description":  "Acquia recommended global commands added.",
   "keywords":  [
     "drush",
     "drupal"
