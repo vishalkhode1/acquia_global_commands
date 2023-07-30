@@ -18,5 +18,10 @@
       "role":  "Maintainer"
     }
   ],
+  "autoload": {
+    "psr-4": {
+      "Acquia\\GlobalCommands\\": "src/"
+    }
+  },
   "require":  {}
 }
