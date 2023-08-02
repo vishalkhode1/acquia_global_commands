@@ -37,7 +37,9 @@ class SiteInstallCommands extends DrushCommands {
   public function postSiteInstallCommand($result, CommandData $commandData): void {
     $telemetry = AcquiaTelemetry::getInstance();
     $telemetry->setTime("end_time", microtime(true));
-    $this->io()->writeln(" <fg=white;bg=green>[success]</> Site installation time: <fg=green>" . $telemetry->getTimeDifferenceInSeconds("start_time", "end_time") . "</> s.");
+    $installTime = $telemetry->getTimeDifferenceInSeconds("start_time", "end_time");
+    \Drupal::state()->set('acquia_cms.site_install_time', $installTime);
+    $this->io()->writeln(" <fg=white;bg=green>[success]</> Site installation time: <fg=green>" . $installTime . "</> s.");
   }
 
 }
