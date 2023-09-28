@@ -1,7 +1,7 @@
 {
   "name":  "acquia/acquia_global_commands",
   "type":  "drupal-drush",
-  "description":  "Acquia recommended global commands added.",
+  "description":  "Acquia recommended global drush commands.",
   "keywords":  [
     "drush",
     "drupal"
