@@ -20,7 +20,7 @@ class MultiSiteCommands extends DrushCommands {
    * @param \Consolidation\AnnotatedCommand\CommandData $commandData
    *   The information about the current request.
    *
-   * @hook pre-command site-install
+   * @hook pre-command site:install
    */
   public function preSiteInstallCommand(CommandData $commandData): void {
     $options = $commandData->options();
