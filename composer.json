@@ -18,5 +18,13 @@
       "role":  "Maintainer"
     }
   ],
-  "require":  {}
+  "require":  {
+    "acquia/drupal-recommended-settings": "*"
+  },
+  "minimum-stability": "dev",
+  "config": {
+    "allow-plugins": {
+      "acquia/drupal-recommended-settings": true
+    }
+  }
 }
