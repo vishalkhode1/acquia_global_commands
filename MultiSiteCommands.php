@@ -3,12 +3,13 @@
 namespace Drush\Commands\acquia_global_commands;
 
 use Consolidation\AnnotatedCommand\CommandData;
+use Drupal\Core\Site\Settings;
+use Drush\Boot\DrupalBootLevels;
 use Drush\Commands\DrushCommands;
+use Drush\Drush;
 use Robo\Contract\BuilderAwareInterface;
 use Robo\Contract\VerbosityThresholdInterface;
 use Robo\LoadAllTasks;
-use Symfony\Component\Console\Question\ConfirmationQuestion;
-use Symfony\Component\Console\Question\Question;
 
 /**
  * A drush command file.
@@ -20,79 +21,36 @@ class MultiSiteCommands extends DrushCommands implements BuilderAwareInterface {
   use LoadAllTasks;
 
   /**
-   * Execute code before site:install command.
+   * Execute code after site:install command.
    *
-   * @param \Consolidation\AnnotatedCommand\CommandData $commandData
-   *   The information about the current request.
+   * @param $result
+   * @param CommandData $commandData
+   *   The command data.
    *
-   * @hook pre-command site:install
+   * @return void
    * @throws \Exception
+   * @hook post-command site:install
+   *
    */
-  public function preSiteInstallCommand(CommandData $commandData): void {
+  public function postSiteInstallCommand($result, CommandData $commandData): void {
     $options = $commandData->options();
+    $rootDir = $options['root'] ?? DRUPAL_ROOT;
     $uri = $options['uri'] ?? "";
-    $dbUrl = $options['db-url'] ?? "";
-    $existingConfig = $options['existing-config'] ?? FALSE;
+    $sitePath = $this->getSitePath();
+    $siteName = explode('/', $sitePath)[1];
 
-    if ($uri) {
-      $site_name = $this->getNewSiteName($uri);
-      $new_site_dir = $this->getConfigValue('docroot') . '/sites/' . $site_name;
+    $new_site_dir = $rootDir . '/' . $sitePath;
+//    if (file_exists($new_site_dir)) {
+//      throw new \Exception("Cannot generate new multisite, $new_site_dir already exists!");
+//    }
 
-      if (file_exists($new_site_dir)) {
-        throw new \Exception("Cannot generate new multisite, $new_site_dir already exists!");
-      }
-
-      $this->say("This will generate a new site in the docroot/sites/$site_name directory.");
-      $default_site_dir = $this->getConfigValue('docroot') . '/sites/default';
+    if ($siteName !='default') {
+      $this->say("This will generate a new site in the docroot/$sitePath directory.");
+      $default_site_dir = $rootDir . '/sites/default';
       $this->createNewSiteDir($default_site_dir, $new_site_dir);
-      $this->createNewSiteConfigDir($site_name);
+      $this->createNewSiteConfigDir($siteName, $rootDir);
     }
 
-    if ($uri && !$dbUrl && !$existingConfig) {
-      $question = new ConfirmationQuestion("Would you like to configure the local database credentials?", TRUE);
-      $answer = $this->io()->askQuestion($question);
-      if ($answer) {
-        $question = new Question("Local database name", $uri);
-        $dbName = $this->io()->askQuestion($question);
-
-        $question = new Question("Local database user", $uri);
-        $dbUser = $this->io()->askQuestion($question);
-
-        $question = new Question("Local database password", $uri);
-        $dbPassword = $this->io()->askQuestion($question);
-
-        $question = new Question("Local database host", "localhost");
-        $dbHost = $this->io()->askQuestion($question);
-
-        $question = new Question("Local database port", "3306");
-        // @todo add validation for port number.
-        $dbPort = $this->io()->askQuestion($question);
-        // @todo generate settings.php code.
-        $commandData->input()->setOption("db-url", "mysql://$dbUser:$dbPassword@$dbHost:$dbPort/$dbName");
-      }
-    }
-  }
-  /**
-   * Get new site name.
-   *
-   * @param string $uri
-   *   Options.
-   *
-   * @return string
-   *   Site name.
-   */
-  private function getNewSiteName(string $uri) {
-    $site_name = parse_url($uri);
-    if (!empty($site_name)){
-      if (isset($site_name['scheme'])) {
-        $site_name = $site_name['host'];
-      }
-      else {
-        $site_name = $site_name['path'];
-      }
-    }
-    // @todo get site name from $sites value.
-    return $site_name;
   }
 
   /**
@@ -109,7 +67,7 @@ class MultiSiteCommands extends DrushCommands implements BuilderAwareInterface {
     $result = $this->taskCopyDir([
       $default_site_dir => $new_site_dir,
     ])
-      ->exclude(['local.settings.php', 'files'])
+      ->exclude(['local.settings.php', 'settings.php', 'files'])
       ->setVerbosityThreshold(VerbosityThresholdInterface::VERBOSITY_VERBOSE)
       ->run();
     if (!$result->wasSuccessful()) {
@@ -118,14 +76,17 @@ class MultiSiteCommands extends DrushCommands implements BuilderAwareInterface {
   }
 
   /**
-   * Create new config dir.
+   * Create config directory for given multisite.
    *
    * @param string $site_name
-   *   Site name.
+   *   The site machine name.
+   * @param string $rootDir
+   *   The document root path.
+   *
    * @throws \Exception
    */
-  protected function createNewSiteConfigDir(string $site_name) {
-    $config_dir = $this->getConfigValue('docroot') . '/' . $this->getConfigValue('cm.core.path') . '/' . $site_name;
+  protected function createNewSiteConfigDir(string $site_name, string $rootDir) {
+    $config_dir = $rootDir . '/' . Settings::get('config_sync_directory', 'config') . '/' . $site_name;
     $result = $this->taskFilesystemStack()
       ->mkdir($config_dir)
       ->setVerbosityThreshold(VerbosityThresholdInterface::VERBOSITY_VERBOSE)
@@ -133,5 +94,16 @@ class MultiSiteCommands extends DrushCommands implements BuilderAwareInterface {
     if (!$result->wasSuccessful()) {
       throw new \Exception("Unable to create $config_dir.");
     }
+  }
+
+  /**
+   * Get site path string.
+   *
+   * @return array|bool|float|int|string|\UnitEnum|null
+   * @throws \Exception
+   */
+  protected function getSitePath(): \UnitEnum|float|array|bool|int|string|null {
+    Drush::bootstrapManager()->doBootstrap(DrupalBootLevels::FULL);
+    return \Drupal::getContainer()->getParameter('site.path');
   }
 }
