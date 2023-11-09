@@ -20,11 +20,13 @@
   ],
   "minimum-stability": "dev",
   "require-dev": {
-    "acquia/drupal-recommended-settings": "*"
+    "acquia/drupal-recommended-settings": "*",
+    "acquia/coding-standards": "^1.0"
   },
   "config": {
     "allow-plugins": {
-      "acquia/drupal-recommended-settings": true
+      "acquia/drupal-recommended-settings": true,
+      "dealerdirect/phpcodesniffer-composer-installer": true
     }
   }
 }

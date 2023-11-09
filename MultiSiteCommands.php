@@ -2,21 +2,17 @@
 
 namespace Drush\Commands\acquia_global_commands;
 
-use Acquia\Drupal\RecommendedSettings\Config\ConfigInitializer;
-use Acquia\Drupal\RecommendedSettings\Config\SettingsConfig;
 use Acquia\Drupal\RecommendedSettings\Settings;
 use Consolidation\AnnotatedCommand\CommandData;
 use Drush\Commands\DrushCommands;
-use Drush\Sql\SqlBase;
 use Robo\Contract\BuilderAwareInterface;
 use Robo\LoadAllTasks;
-use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Filesystem\Path;
 
 /**
  * A drush command file.
  *
- * @package Drupal\acquia_global_commands\Commands
+ * @package Drupal\AcquiaGlobalCommands\Commands
  */
 class MultiSiteCommands extends DrushCommands implements BuilderAwareInterface {
 
@@ -28,56 +24,50 @@ class MultiSiteCommands extends DrushCommands implements BuilderAwareInterface {
    * @hook pre-validate site:install
    */
   public function preValidateSiteInstall(CommandData $commandData): void {
-    $sitesSubdir = $this->getSitesSubdirFromUri(DRUPAL_ROOT, $commandData->input()->getOption('uri'));
+    $uri = $commandData->input()->getOption('uri') ?? 'default';
+    $sitesSubdir = $this->getSitesSubdirFromUri(DRUPAL_ROOT, $uri);
     $commandData->input()->setOption('sites-subdir', $sitesSubdir);
 
     $options = $commandData->options();
-    $dbUrl = $options['db-url'] ?? "";
-    $existingConfig = $options['existing-config'] ?? FALSE;
-
-    if ($sitesSubdir != 'default' && !$existingConfig) {
-
-      if(!$dbUrl) {
-        $dbSpec = $this->setLocalDbConfig($sitesSubdir, $commandData);
-      }
-
-      $Settings = new Settings(DRUPAL_ROOT, $sitesSubdir);
-      if (!empty($dbSpec)) {
-        $Settings->generate($dbSpec);
-      }
-      else
-      $Settings->generate();
+    if ($sitesSubdir != 'default' && !$options['existing-config']) {
+      $dbSpec = !($options['db-url']) ? $this->setLocalDbConfig($sitesSubdir, $commandData) : [];
+      $settings = new Settings(DRUPAL_ROOT, $sitesSubdir);
+      $settings->generate($dbSpec);
     }
   }
 
   /**
    * Set local database credentials.
+   *
+   * @return array
+   *   Returns databse information.
    */
-  private function setLocalDbConfig($site_name, $commandData) {
-    $configDB = $this->confirm("Would you like to configure the local database credentials?");
+  private function setLocalDbConfig($site_name, $commandData): array {
+    $configDB = $this->io()->confirm(dt("Would you like to configure the local database credentials?"));
     $db = [];
 
     if ($configDB) {
-      $dbName = $db['drupal']['db']['database'] = $this->askDefault("Local database name", $site_name);
-      $dbUser = $db['drupal']['db']['username'] = $this->askDefault("Local database user", $site_name);
-      $dbPassword = $db['drupal']['db']['password'] = $this->askDefault("Local database password", $site_name);
-      $dbHost = $db['drupal']['db']['host'] = $this->askDefault("Local database host", "localhost");
-      $dbPort = $db['drupal']['db']['port'] = $this->askDefault("Local database port", "3306");
+      $dbName = $db['drupal']['db']['database'] = $this->io()->ask("Local database name", $site_name);
+      $dbUser = $db['drupal']['db']['username'] = $this->io()->ask("Local database user", 'drupal');
+      $dbPassword = $db['drupal']['db']['password'] = $this->io()->ask("Local database password", 'drupal');
+      $dbHost = $db['drupal']['db']['host'] = $this->io()->ask("Local database host", "localhost");
+      $dbPort = $db['drupal']['db']['port'] = $this->io()->ask("Local database port", "3306");
 
       $commandData->input()->setOption("db-url", "mysql://$dbUser:$dbPassword@$dbHost:$dbPort/$dbName");
     }
+
     return $db;
   }
 
   /**
-   * Determine an appropriate site subdir name to use for the
-   * provided uri.
+   * Determine an appropriate site subdir name to use for the provided uri.
    *
    * This code copied from SiteInstallCommands.php file.
    *
    * @return array|false|mixed|string|string[]
+   *   Returns the site uri.
    */
-  private function getSitesSubdirFromUri($root, $uri) {
+  private function getSitesSubdirFromUri($root, $uri): mixed {
     $dir = strtolower($uri);
     // Always accept simple uris (e.g. 'dev', 'stage', etc.)
     if (preg_match('#^[a-z0-9_-]*$#', $dir)) {
@@ -102,6 +92,7 @@ class MultiSiteCommands extends DrushCommands implements BuilderAwareInterface {
     if (file_exists(Path::join($root, 'sites', 'default'))) {
       return 'default';
     }
+
     return FALSE;
   }
 
