@@ -24,22 +24,23 @@ class MultiSiteCommands extends DrushCommands implements BuilderAwareInterface {
    *
    * @hook pre-validate site:install
    */
-  public function preValidateSiteInstall(CommandData $commandData): void {
-    $uri = $commandData->input()->getOption('uri') ?? 'default';
-    $sitesSubdir = $this->getSitesSubdirFromUri(DRUPAL_ROOT, $uri);
-    $commandData->input()->setOption('sites-subdir', $sitesSubdir);
-
-    $options = $commandData->options();
-    if ($sitesSubdir != 'default' && !$options['existing-config']) {
-      $dbSpec = !($options['db-url']) ? $this->setLocalDbConfig($sitesSubdir, $commandData) : [];
-      $settings = new Settings(DRUPAL_ROOT, $sitesSubdir);
-      try {
-        $settings->generate($dbSpec);
-      } catch (SettingsException $e) {
-        $this->io()->warning($e->getMessage());
-      }
-    }
-  }
+   public function preValidateSiteInstall(CommandData $commandData): void {
+     $uri = $commandData->input()->getOption('uri') ?? 'default';
+     $sitesSubdir = $this->getSitesSubdirFromUri(DRUPAL_ROOT, $uri);
+     $commandData->input()->setOption('sites-subdir', $sitesSubdir);
+     $options = $commandData->options();
+     if (!is_dir($sitesSubdir) || (is_dir($sitesSubdir) && !$database['default'])) {
+       if ($sitesSubdir != 'default' && !$options['existing-config']) {
+         $dbSpec = !($options['db-url']) ? $this->setLocalDbConfig($sitesSubdir, $commandData) : [];
+         $settings = new Settings(DRUPAL_ROOT, $sitesSubdir);
+         try {
+           $settings->generate($dbSpec);
+         } catch (SettingsException $e) {
+           $this->io()->warning($e->getMessage());
+         }
+       }
+     }
+   }
 
   /**
    * Set local database credentials.
