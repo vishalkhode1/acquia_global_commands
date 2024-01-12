@@ -2,12 +2,15 @@
 
 namespace Drush\Commands\acquia_global_commands;
 
-use Acquia\Drupal\RecommendedSettings\Settings;
 use Acquia\Drupal\RecommendedSettings\Exceptions\SettingsException;
+use Acquia\Drupal\RecommendedSettings\Helpers\EnvironmentDetector;
+use Acquia\Drupal\RecommendedSettings\Settings;
 use Consolidation\AnnotatedCommand\CommandData;
+use Drupal\Core\Database\Database;
+use Drush\Boot\BootstrapManager;
+use Drush\Boot\DrupalBootLevels;
 use Drush\Commands\DrushCommands;
-use Robo\Contract\BuilderAwareInterface;
-use Robo\LoadAllTasks;
+use Psr\Container\ContainerInterface as DrushContainer;
 use Symfony\Component\Filesystem\Path;
 
 /**
@@ -15,9 +18,23 @@ use Symfony\Component\Filesystem\Path;
  *
  * @package Drupal\AcquiaGlobalCommands\Commands
  */
-class MultiSiteCommands extends DrushCommands implements BuilderAwareInterface {
+class MultiSiteCommands extends DrushCommands {
 
-  use LoadAllTasks;
+  /**
+   * Construct an object of Multisite commands.
+   */
+  public function __construct(private BootstrapManager $bootstrapManager) {
+    parent::__construct();
+  }
+
+  /**
+   * {@inheritDoc}
+   */
+  public static function createEarly(DrushContainer $drush_container): self {
+    return new static(
+      $drush_container->get('bootstrap.manager')
+    );
+  }
 
   /**
    * Execute code before pre-validate site:install.
@@ -25,43 +42,74 @@ class MultiSiteCommands extends DrushCommands implements BuilderAwareInterface {
    * @hook pre-validate site:install
    */
   public function preValidateSiteInstall(CommandData $commandData): void {
-    $uri = $commandData->input()->getOption('uri') ?? 'default';
-    $sitesSubdir = $this->getSitesSubdirFromUri(DRUPAL_ROOT, $uri);
-    $commandData->input()->setOption('sites-subdir', $sitesSubdir);
 
-    $options = $commandData->options();
-    if ($sitesSubdir != 'default' && !$options['existing-config']) {
-      $dbSpec = !($options['db-url']) ? $this->setLocalDbConfig($sitesSubdir, $commandData) : [];
-      $settings = new Settings(DRUPAL_ROOT, $sitesSubdir);
-      try {
-        $settings->generate($dbSpec);
-      } catch (SettingsException $e) {
-        $this->io()->warning($e->getMessage());
+    // Add db creds in case of local && IDE, it causes issue on ACSF.
+    if (!EnvironmentDetector::isAcsfEnv() && (EnvironmentDetector::isLocalEnv() || EnvironmentDetector::isAhIdeEnv())) {
+      $uri = $commandData->input()->getOption('uri') ?? 'default';
+      $sitesSubdir = $this->getSitesSubdirFromUri(DRUPAL_ROOT, $uri);
+      $commandData->input()->setOption('sites-subdir', $sitesSubdir);
+      $options = $commandData->options();
+      $this->bootstrapManager->setUri('http://' . $sitesSubdir);
+
+      // Try to get any already configured database information.
+      $this->bootstrapManager->bootstrapMax(DrupalBootLevels::CONFIGURATION, $commandData->annotationData());
+
+      // By default, bootstrap manager boot site from default/setting.php
+      // hence remove the database connection if site is other than default.
+      if (($sitesSubdir && "sites/$sitesSubdir" !== $this->bootstrapManager->bootstrap()->confpath())) {
+        Database::removeConnection('default');
+        $dbSpec = !($options['db-url']) ? $this->setLocalDbConfig($sitesSubdir, $commandData) : [];
+        $settings = new Settings(DRUPAL_ROOT, $sitesSubdir);
+        try {
+          $settings->generate($dbSpec);
+        } catch (SettingsException $e) {
+          $this->io()->warning($e->getMessage());
+        }
       }
     }
   }
 
   /**
-   * Set local database credentials.
+   * Get local database specs.
+   *
+   * @param string $site_name
+   *   The site name.
+   * @param \Consolidation\AnnotatedCommand\CommandData $commandData
+   *   The command data object.
    *
    * @return array
-   *   Returns databse information.
+   *   The database specs.
    */
-  private function setLocalDbConfig($site_name, $commandData): array {
-    $configDB = $this->io()->confirm(dt("Would you like to configure the local database credentials?"));
-    $db = [];
-
-    if ($configDB) {
-      $dbName = $db['drupal']['db']['database'] = $this->io()->ask("Local database name", $site_name);
-      $dbUser = $db['drupal']['db']['username'] = $this->io()->ask("Local database user", 'drupal');
-      $dbPassword = $db['drupal']['db']['password'] = $this->io()->ask("Local database password", 'drupal');
-      $dbHost = $db['drupal']['db']['host'] = $this->io()->ask("Local database host", "localhost");
-      $dbPort = $db['drupal']['db']['port'] = $this->io()->ask("Local database port", "3306");
-
-      $commandData->input()->setOption("db-url", "mysql://$dbUser:$dbPassword@$dbHost:$dbPort/$dbName");
+  private function setLocalDbConfig(string $site_name, CommandData $commandData): array {
+    $configDB = NULL;
+    if (EnvironmentDetector::isLocalEnv()) {
+      $configDB = $this->io()->confirm(dt("Would you like to configure the local database credentials?"));
     }
 
-    return $db;
+    // Initialise with default db specs.
+    $dbSpec['drupal']['db'] = [
+      'database' => 'drupal',
+      'username' => 'drupal',
+      'password' => 'drupal',
+      'host' => 'localhost',
+      'port' => '3306',
+    ];
+
+    if ($configDB) {
+      $dbSpec['drupal']['db']['database'] = $this->io()->ask("Local database name", $site_name);
+      $dbSpec['drupal']['db']['username'] = $this->io()->ask("Local database user", 'drupal');
+      $dbSpec['drupal']['db']['password'] = $this->io()->ask("Local database password", 'drupal');
+      $dbSpec['drupal']['db']['host'] = $this->io()->ask("Local database host", "localhost");
+      $dbSpec['drupal']['db']['port'] = $this->io()->ask("Local database port", "3306");
+    }
+    $dbString = "mysql://" . $dbSpec['drupal']['db']['username'] . ":" .
+      $dbSpec['drupal']['db']['password'] . '@' .
+      $dbSpec['drupal']['db']['host'] . ':' .
+      $dbSpec['drupal']['db']['port'] . '/' .
+      $dbSpec['drupal']['db']['database'];
+    $commandData->input()->setOption("db-url", $dbString);
+
+    return $dbSpec;
   }
 
   /**
@@ -100,5 +148,4 @@ class MultiSiteCommands extends DrushCommands implements BuilderAwareInterface {
 
     return FALSE;
   }
-
 }
